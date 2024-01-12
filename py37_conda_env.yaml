@@ -1,4 +1,4 @@
-name: py3-defs2
+name: py3-defs
 channels:
   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
