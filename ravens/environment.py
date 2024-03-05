@@ -11,7 +11,7 @@ import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
 
-from ravens.gripper import Gripper, Suction
+from ravens.gripper import Gripper, Suction, Robotiq2F85
 from ravens import tasks, utils
 
 
@@ -245,7 +245,7 @@ class Environment():
             assert self.hz >= 480, f'Error, hz={self.hz} is too small!'
 
         # Restart simulation.
-        self.start()
+        self.start() # set self.running = True
         if disable_render_load:
             p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
         (obs, _, _, _) = self.step()

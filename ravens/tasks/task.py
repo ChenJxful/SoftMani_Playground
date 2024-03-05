@@ -687,7 +687,7 @@ class Task():
 
                 object_positions = {}
                 for object_id in env.objects:  # record all objects
-                    # print("object_id", object_id)
+                    print("object_id", object_id)
                     position_ = p.getBasePositionAndOrientation(object_id)
                     # print(position_)
                     object_positions[object_id] = position_
@@ -734,13 +734,14 @@ class Task():
                 # position = rotation @ position + translation
 
                 targets = list(self.goal['places'].keys())
+                print("targets", targets)
                 targets_pose_now = []
                 for t in targets:
                     # 只比较欧拉角其中一维 这样是错误的
                     euler_xyz = list(utils.get_rot_from_pybullet_quaternion(object_positions[t][1]))
                     euler_xyz1 = p.getEulerFromQuaternion(object_positions[t][1])
                     print("euler_xyz", euler_xyz)
-                    print("euler_xyz1", euler_xyz)
+                    print("euler_xyz1", euler_xyz1)
                     # return
                     # euler_xyz[0] = 0.0
                     # euler_xyz[1] = 0.0 # -= np.pi / 2.0

@@ -11,7 +11,7 @@ import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
 
-from ravens.gripper import Gripper, Suction
+from ravens.gripper import Gripper, Suction, Robotiq2F85
 from ravens import tasks, utils
 from ravens import Environment
 import copy
@@ -40,7 +40,9 @@ class DualArmEnvironment(Environment):
             current_position = np.array(current_state[0])
             
             # camera target position is set as the ur5_2
-            ee1_state = p.getLinkState(self.ur5_2, 12, computeForwardKinematics=True)
+            # ur5_2_ee_tip_link = 12 # if use gripper, ee_tip_link = 10
+            ur5_2_ee_tip_link = 10
+            ee1_state = p.getLinkState(self.ur5_2, ur5_2_ee_tip_link, computeForwardKinematics=True)
             target_position = list(ee1_state[0])
             
             view_mtx = p.computeViewMatrix(
@@ -70,9 +72,11 @@ class DualArmEnvironment(Environment):
         """
         ur5_camera's ee follow ur5_2's, the orientation will not change 
         """
+        # ur5_2_ee_tip_link = 12 # if use gripper, ee_tip_link = 10
+        ur5_2_ee_tip_link = 10
         while True:
             time.sleep(0.1)
-            ee1_state = p.getLinkState(self.ur5_2, 12, computeForwardKinematics=True)
+            ee1_state = p.getLinkState(self.ur5_2, ur5_2_ee_tip_link, computeForwardKinematics=True)
             current_state = p.getLinkState(self.ur5_camera, 12, computeForwardKinematics=True)
             
         
@@ -141,21 +145,25 @@ class DualArmEnvironment(Environment):
         ori_co = p.getQuaternionFromEuler((0, 0, math.pi))
         self.ur5_2 = p.loadURDF(f'assets/ur5/ur5-{self.task.ee}.urdf', basePosition=(1.1,0,0), baseOrientation=ori_co)
         
-        ori_camera_arm = p.getQuaternionFromEuler((0, 0, 1.5*math.pi))
-        self.ur5_camera = p.loadURDF(f'assets/ur5/ur5-{self.task.ee}.urdf', basePosition=(0.5,1,0), baseOrientation=ori_camera_arm)
+        ori_camera_arm = p.getQuaternionFromEuler((0, 0, -0.5*math.pi))
+        self.ur5_camera = p.loadURDF(f'assets/ur5/ur5-suction.urdf', basePosition=(0.5,1,0), baseOrientation=ori_camera_arm)
         
         
-        self.ee_tip_link_2 = 12
         self.ee_tip_link_camera = 12
-        self.ee_tip_link = 12
         if self.task.ee == 'suction':
-            self.ee = Suction(self.ur5, 11, position=(0.387, 0.109, 0.351))
-            self.ee_2 = Suction(self.ur5_2, 11, position=(0.612, -0.109, 0.351))
-            self.ee_camera = Suction(self.ur5_camera, 11, camera=True)
+            self.ee_tip_link = 12
+            self.ee_tip_link_2 = 12
+            self.ee = Suction(self.ur5, self.ee_tip_link-1, position=(0.387, 0.109, 0.351))
+            self.ee_2 = Suction(self.ur5_2, self.ee_tip_link_2-1, position=(0.612, -0.109, 0.351))
+            self.ee_camera = Suction(self.ur5_camera, self.ee_tip_link_camera-1, camera=True)
             
         elif self.task.ee == 'gripper':
-            self.ee = Robotiq2F85(self.ur5, 9)
             self.ee_tip_link = 10
+            self.ee_tip_link_2 = 10
+            self.ee = Robotiq2F85(self.ur5, self.ee_tip_link-1)
+            self.ee_2 = Robotiq2F85(self.ur5_2, self.ee_tip_link_2-1)
+            self.ee_camera = Suction(self.ur5_camera, self.ee_tip_link_camera-1, camera=True)
+
         else:
             self.ee = Gripper()
 
@@ -174,7 +182,6 @@ class DualArmEnvironment(Environment):
         self.joints_2 = [j[0] for j in joints_2 if j[2] == p.JOINT_REVOLUTE]
         # print('self.joints2:\n', '\n'.join([str(j) for j in joints_2]))
         
-        
         utils.cprint('UR5 ArmCamera setup...', 'blue')
         num_joints_camera = p.getNumJoints(self.ur5_camera)
         # print("num_joints2:", num_joints_2)
@@ -183,6 +190,7 @@ class DualArmEnvironment(Environment):
         # print('self.joints2:\n', '\n'.join([str(j) for j in joints_2]))
 
         # Move robot to home joint configuration.
+        # print(len(self.joints))
         for i in range(len(self.joints)):
             p.resetJointState(self.ur5, self.joints[i], self.homej[i])
             p.resetJointState(self.ur5_2, self.joints_2[i], self.homej[i])
@@ -192,17 +200,18 @@ class DualArmEnvironment(Environment):
 
         # Get end effector tip pose in home configuration.
         ee_tip_state = p.getLinkState(self.ur5, self.ee_tip_link)
+        # print(ee_tip_state)
         self.home_pose = np.array(ee_tip_state[0] + ee_tip_state[1])
-        
         ee_tip_state_2 = p.getLinkState(self.ur5_2, self.ee_tip_link_2)
+        # print(ee_tip_state_2)
         self.home_pose_2 = np.array(ee_tip_state_2[0] + ee_tip_state_2[1])
+        # time.sleep(100)
 
         # Reset end effector.
         self.ee.release()
-        self.ur5_list = [self.ur5, self.ee_tip_link, self.joints, self.ee]
         self.ee_2.release()
+        self.ur5_list = [self.ur5, self.ee_tip_link, self.joints, self.ee]
         self.ur5_2_list = [self.ur5_2, self.ee_tip_link_2, self.joints_2, self.ee_2]
-        
         self.ur5_camera_list = [self.ur5_camera, self.ee_tip_link_camera, self.joints_camera, self.ee_camera]
         
 
@@ -248,6 +257,7 @@ class DualArmEnvironment(Environment):
             p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
         (obs, _, _, _) = self.step()
         
+        # time.sleep(100)
         
         self.camera_follow_new_thread()
         self.camera_shoot_new_thread()

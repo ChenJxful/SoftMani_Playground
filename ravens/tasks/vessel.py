@@ -25,6 +25,7 @@ class Vessel(Task):
     def __init__(self):
         super().__init__()
         self.ee = 'suction'
+        self.ee = 'gripper'
         self.max_steps = 20
         self.metric = 'zone'
         self.primitive = 'pick_place_vessel'

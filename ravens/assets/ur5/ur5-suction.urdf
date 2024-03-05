@@ -306,18 +306,6 @@
     <child link="tool_tip"/>
   </joint>
 
-
-
-
-
-
-
-
-
-
-
-
-
   <link name="world"/>
   <joint name="world_joint" type="fixed">
     <parent link="world"/>
@@ -331,7 +319,7 @@
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <inertia ixx="0.0" ixy="0.0" ixz="0.0" iyy="0.0" iyz="0.0" izz="0.0"/>
     </inertial>
-  </link>>
+  </link>
 
   <joint name="rotated_base-base_fixed_joint" type="fixed">
     <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 3.141592653589793"/>
