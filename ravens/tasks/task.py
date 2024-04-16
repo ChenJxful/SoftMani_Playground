@@ -672,7 +672,7 @@ class Task():
                 params = {'pose0': pick_pose, 'pose1': place_pose}
                 print("params:", params)
                 act['params'] = params
-
+            
             elif self.primitive == 'pick_place_vessel':
                 # !! policy for vessel_sim !!
                 # Trigger reset if no ground truth steps are available.
@@ -684,10 +684,11 @@ class Task():
                 # next_step = self.goal['steps'][0]
                 # possible_objects = np.int32(list(next_step.keys())).copy()  # default empty
                 # print("possible_objects", possible_objects)
-
+                
+                # 获取所有物体（珠子）的位置
                 object_positions = {}
                 for object_id in env.objects:  # record all objects
-                    print("object_id", object_id)
+                    # print("object_id", object_id)
                     position_ = p.getBasePositionAndOrientation(object_id)
                     # print(position_)
                     object_positions[object_id] = position_
@@ -734,7 +735,7 @@ class Task():
                 # position = rotation @ position + translation
 
                 targets = list(self.goal['places'].keys())
-                print("targets", targets)
+                # print("targets", targets)
                 targets_pose_now = []
                 for t in targets:
                     # 只比较欧拉角其中一维 这样是错误的
@@ -748,18 +749,18 @@ class Task():
                     # euler_xyz[2]
                 
                     # 计算圆柱指向的夹角 TODO not fully verified !!!
-                    dir_vector = ([1, 0, 0], [0, 0, 0, 1])
-                    dir_vector = utils.multiply(([0, 0, 0], object_positions[t][1]), dir_vector)[0]
-                    angle = math.atan(dir_vector[0]/dir_vector[1])
+                    # dir_vector = ([1, 0, 0], [0, 0, 0, 1])
+                    # dir_vector = utils.multiply(([0, 0, 0], object_positions[t][1]), dir_vector)[0]
+                    # angle = math.atan(dir_vector[0]/dir_vector[1])
                     targets_pose_now.append([object_positions[t][0],
-                                             utils.get_pybullet_quaternion_from_rot([0, 0, euler_xyz[0]])])
+                                             utils.get_pybullet_quaternion_from_rot([0, 0, euler_xyz[0] + np.pi/2])])
 
                 arm1_pick_pose=(targets_pose_now[0])
                 arm2_pick_pose=(targets_pose_now[1])
                 
                 # arm1_pick_pose=(object_positions[targets[0]][0], pick_rotation)  # 无旋转
                 # arm2_pick_pose=(object_positions[targets[1]][0], pick_rotation)
-                print("Pick pose:", arm1_pick_pose, arm2_pick_pose)
+                # print("Pick pose:", arm1_pick_pose, arm2_pick_pose)
 
                 # Get candidate target placing poses.
                 targets_pose_goal = [self.goal['places'][targets[i]] for i in range(2)]
@@ -773,7 +774,7 @@ class Task():
 
                 params = {'arm1_pose0': arm1_pick_pose, 'arm1_pose1': targets_pose_goal[0],
                           'arm2_pose0': arm2_pick_pose, 'arm2_pose1': targets_pose_goal[1]}
-                print("params:", params)
+                # print("params:", params)
                 act['params'] = params
 
             elif isinstance(self, tasks.names['sweeping']):

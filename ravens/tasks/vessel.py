@@ -47,7 +47,7 @@ class Vessel(Task):
         # The square -- really 3 edges of it, since .urdf doesn't include a
         # 4th. The square_pose describes the pose relative to a coordinate
         # frame with (0,0,0) at the base of the UR5 robot. Replace the
-        # dimension and lengths with desired values in a new .urdf.
+        # dimension and lengths with desired values in a new .urdf.s
         # square_size = (length, length, 0)
         # square_pose = self.random_pose(env, square_size)  # 获得 position, rotation ()
         # print('square_pose: ', square_pose)
@@ -84,7 +84,11 @@ class Vessel(Task):
         # position, _ = self.random_pose(env, zone_range)  # 随机位置（注意是tuple）
 
         def add_vessel(position, direction, hang_position):
-            '''position 起始位置, direction 延伸的方向, hang_position 悬挂的位置
+            '''
+            Args:
+                position 起始位置, 
+                direction 延伸的方向, 
+                hang_position 悬挂的位置
             '''
             assert np.linalg.norm(direction) == 1, "direction should be unit vector"
             # 定义每个珠子的属性
@@ -97,6 +101,7 @@ class Vessel(Task):
                     part_visual = p.createVisualShape(p.GEOM_CYLINDER, radius=0.01, length=0.01)
                     orientation = p.getQuaternionFromEuler((0, 0.5*math.pi, 0))
                 else:
+                    # 血管末端的圆柱
                     distance = 0.055  # 珠子之间的距离
                     part_shape = p.createCollisionShape(p.GEOM_CYLINDER, radius=0.01, height=0.1)
                     part_visual = p.createVisualShape(p.GEOM_CYLINDER, radius=0.01, length=0.1)  # 主要改形状
@@ -142,24 +147,30 @@ class Vessel(Task):
                     p.changeConstraint(constraint_id, maxForce=100)
 
                 # 颜色
-                # if (i > 0) and (i < num_parts - 1):  # 一头一尾不变色 中间红色
+                # if (i > 0) and (i < num_parts - 1):  
                 if i > 0:
                     color = utils.COLORS['red'] + [1]
                     p.changeVisualShape(part_id, -1, rgbaColor=color)
+                # 末端圆柱设置成绿色
+                if part_id == 32 or part_id == 57:
+                    color = utils.COLORS['green'] + [1]
+                    p.changeVisualShape(part_id, -1, rgbaColor=color)
                 env.objects.append(part_id)
-                # print("part_id:", env.objects)
+                # print("part_id:", part_id)
             return part_id  # 返回最后一个珠子的 id
 
         utils.cprint('Adding vessel1...', 'green')
-        last_part_1 = add_vessel(np.float32((0.1, 0.1, 0)) + np.r_[np.random.uniform(size=2), 0] * 0.2,
+        # FIXME: 加入随机性 + np.r_[np.random.uniform(size=2), 0] * 0.2
+        last_part_1 = add_vessel(np.float32((0.1, 0.1, 0)),
                                  [1, 0, 0],
                                  [-0.25, 0.05, 0.1])  # add vessel 1
         utils.cprint('Adding vessel2...', 'green')
-        last_part_2 = add_vessel(np.float32((0.9, -0.1, 0)) + np.r_[np.random.uniform(size=2), 0] * 0.2,
+        last_part_2 = add_vessel(np.float32((0.9, -0.1, 0)),
                                  [-1, 0, 0],
                                  [0.25, -0.05, 0.1])  # add vessel 2
 
         # end-part target positions
+        # 最终夹爪对齐要移动到的位置
         self.goal['places'][last_part_1] = ((0.45,0,0.1), (0, 0, 0, 1))
         self.goal['places'][last_part_2] = ((0.55,0,0.1), (0, 0, 0, 1))
 

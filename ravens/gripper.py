@@ -5,7 +5,6 @@ import threading
 import numpy as np
 import pybullet as p
 import math
-from ravens import utils as U
 from collections import namedtuple
 
 
@@ -63,7 +62,8 @@ class Suction(Gripper):
                 parentFramePosition=(0, 0, 0),
                 childFramePosition=(0, 0, -0.07))
         else:
-            rotation = p.getQuaternionFromEuler((0, 0, np.pi))
+            position = [0.5, 0.1, 0.4]
+            rotation = p.getQuaternionFromEuler((0, np.pi, 0))
             urdf = 'assets/ur5/camera_box.urdf'
             self.body = p.loadURDF(urdf, position, rotation)
             constraint_id = p.createConstraint(
@@ -380,14 +380,14 @@ class Robotiq2F85:
                              lateralFriction=1.5,
                              spinningFriction=1.0,
                              rollingFriction=0.0001,
-                             # rollingFriction=1.0,
+                            #  rollingFriction=1.0,
                              frictionAnchor=True)  # contactStiffness=0.0, contactDamping=0.0
 
         self.setup_mimic_joints()
         self.move_griper(self.gripper_range[1])
 
         # Start thread to handle additional gripper constraints
-        self.motor_joint = 1
+        self.motor_joint = 6
         # self.constraints_thread = threading.Thread(target=self.step)
         # self.constraints_thread.daemon = True
         # self.constraints_thread.start()
@@ -422,7 +422,7 @@ class Robotiq2F85:
         self.arm_lower_limits = [info.lowerLimit for info in self.joints if info.controllable][:self.arm_num_dofs]
         self.arm_upper_limits = [info.upperLimit for info in self.joints if info.controllable][:self.arm_num_dofs]
         self.arm_joint_ranges = [info.upperLimit - info.lowerLimit for info in self.joints if info.controllable][:self.arm_num_dofs]
-    #BUG: mimic joints are not working
+
     def setup_mimic_joints(self):
         mimic_parent_name = 'robotiq_2f_85_left_driver_joint'
         mimic_children_names = {'robotiq_2f_85_right_driver_joint': 1,
@@ -450,20 +450,20 @@ class Robotiq2F85:
                                 force=self.joints[self.mimic_parent_id].maxForce, maxVelocity=self.joints[self.mimic_parent_id].maxVelocity)
 
     def step(self):
+        pass
         # while True:
-        currj = [p.getJointState(self.body, i)[0]
-                 for i in range(self.n_joints)]
-        indj = [6, 3, 8, 5, 10]
-        targj = [currj[1], -currj[1], -currj[1], currj[1], currj[1]]
-        p.setJointMotorControlArray(self.body, indj, p.POSITION_CONTROL,
-                                    targj, positionGains=np.ones(5))
+        #     currj = [p.getJointState(self.body, i)[0] for i in range(self.n_joints)]
+        #     indj = [6, 3, 8, 5, 10]
+        #     targj = [currj[1], -currj[1], -currj[1], currj[1], currj[1]]
+        #     p.setJointMotorControlArray(self.body, indj, p.POSITION_CONTROL,
+        #                                 targj, positionGains=np.ones(5))
         # time.sleep(0.001)
 
     # Close gripper fingers and check grasp success (width between fingers
     # exceeds some threshold)
     def activate(self, valid_obj=None):
-        p.setJointMotorControl2(self.body, self.motor_joint,
-                                p.VELOCITY_CONTROL, targetVelocity=1, force=100)
+        # p.setJointMotorControl2(self.body, self.motor_joint, p.VELOCITY_CONTROL, targetVelocity=1, force=10)
+        self.move_griper(0.005)
         if not self.external_contact():
             while self.moving():
                 time.sleep(0.001)
@@ -471,8 +471,7 @@ class Robotiq2F85:
 
     # Open gripper fingers
     def release(self):
-        # p.setJointMotorControl2(self.body, self.motor_joint,
-        #                         p.VELOCITY_CONTROL, targetVelocity=-1, force=100)
+        # p.setJointMotorControl2(self.body, self.motor_joint, p.VELOCITY_CONTROL, targetVelocity=-1, force=10)
         self.move_griper(0.085)
         while self.moving():
             time.sleep(0.001)
@@ -502,8 +501,8 @@ class Robotiq2F85:
 
     # Check grasp success
     def check_grasp(self):
-        while self.moving():
-            time.sleep(0.001)
+        # while self.moving():
+        #     time.sleep(0.001)
         success = self.grasp_width() > 0.01
         return success
 
@@ -516,9 +515,8 @@ class Robotiq2F85:
     # Helper functions
 
     def moving(self):
-        v = [np.linalg.norm(p.getLinkState(
-            self.body, i, computeLinkVelocity=1)[6]) for i in [3, 8]]
-        return any(np.array(v) > 1e-2)
+        v = [np.linalg.norm(p.getLinkState(self.body, i, computeLinkVelocity=1)[6]) for i in [3, 8]]
+        return any(np.array(v) > 5e-3)
 
     def check_proximity(self):
         ee_pos = np.array(p.getLinkState(self.robot_id, self.tool_link_index)[0])

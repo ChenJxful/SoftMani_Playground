@@ -28,9 +28,11 @@ class DualArmEnvironment(Environment):
         """
         # show plt figure
         show_plot = True
+        width = 640
+        height = 480
         if show_plot:
             plt.figure()
-            plt_im = plt.imshow(np.zeros((240,320,4)))
+            plt_im = plt.imshow(np.zeros((height,width,4)))
             plt.axis('off')
             plt.tight_layout(pad=0)
             
@@ -38,30 +40,65 @@ class DualArmEnvironment(Environment):
             # camera position is set as the ee of the ur5_camera
             current_state = p.getLinkState(self.ur5_camera, 12, computeForwardKinematics=True)
             current_position = np.array(current_state[0])
-            
+            # print("current camera position:", current_position)
+
             # camera target position is set as the ur5_2
-            # ur5_2_ee_tip_link = 12 # if use gripper, ee_tip_link = 10
+            # if use suction, ur5_2_ee_tip_link = 12. if use gripper, ee_tip_link = 10
             ur5_2_ee_tip_link = 10
-            ee1_state = p.getLinkState(self.ur5_2, ur5_2_ee_tip_link, computeForwardKinematics=True)
-            target_position = list(ee1_state[0])
-            
+            ee2_state = p.getLinkState(self.ur5_2, ur5_2_ee_tip_link, computeForwardKinematics=True)
+            target_position = list(ee2_state[0])
+
+            # 用于设置相机的位置，此处选择俯瞰水平面
+            current_position = [0.5, 0.3, 0.5]
+            target_position = [0.5,0.3001, 0] # 设置为 0.3 会导致无法看到物体，不知原因
             view_mtx = p.computeViewMatrix(
             cameraEyePosition=list(current_position),
             cameraTargetPosition=target_position,
             cameraUpVector=[0, 0, 1]
             )
+            # print("view_mtx:", view_mtx)
             
-            proj_mtx=p.computeProjectionMatrixFOV(fov=60, aspect=640 / 480, nearVal=0.01, farVal=100)
+            proj_mtx=p.computeProjectionMatrixFOV(fov=80, aspect=width / height, nearVal=0.01, farVal=100)
+            # print("proj_mtx:", proj_mtx)
+
+            target_points = [(0.3668141565499163, 0.04517060214212546, 0.009987704273242958, 1), 
+                             (0.6370605588606723, -0.04177962641155508, 0.009987126249605554, 1)]
             
-            width = 400
-            height = 400
+            print("=======================")
+            pixel_points = []
+            # 通过 target point 在世界坐标系中的位置计算抓取点在像素坐标系中的位置
+            for target_point in target_points:
+                pixel_point = self.get_pixel_pos_from_world_pos(target_point, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height)
+                pixel_points.append(pixel_point)
+                print("pixel_point:", pixel_point)
+
+            print("-----------------------")
+            # 通过像素坐标系中的位置计算抓取点在世界坐标系中的位置
+            
+            Z_c = -current_position[2] + 0.01
+            for (i, pixel_point) in enumerate(pixel_points):
+                world_point = self.get_world_pos_from_pixel_pos(pixel_point, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height, Z_c)
+                print("world_point:", world_point)
+
+                # 分别计算 x， y， z 的误差绝对值
+                x_error = abs(world_point[0] - target_points[i][0])
+                y_error = abs(world_point[1] - target_points[i][1])
+                z_error = abs(world_point[2] - target_points[i][2])
+                # print("x_error, y_error, z_error:", x_error, y_error, z_error)
+                # 输出误差的均方标准差
+                print("MSE:", np.sqrt(np.mean(np.square([x_error, y_error, z_error]))))
+
+
+
             img = p.getCameraImage(width, height, view_mtx, proj_mtx)[2]
-            
-  
+            np.save("figures/camera.npy", img)
+
             if show_plot:
                 plt_im.set_array(img)
                 plt.gca().set_aspect(height/width)
                 plt.draw()
+                # plt.savefig("figures/camera.png", bbox_inches='tight', pad_inches=0)
+                # time.sleep(100)
                 plt.pause(0.1)
                 
     def camera_shoot_new_thread(self):
@@ -73,42 +110,41 @@ class DualArmEnvironment(Environment):
         ur5_camera's ee follow ur5_2's, the orientation will not change 
         """
         # ur5_2_ee_tip_link = 12 # if use gripper, ee_tip_link = 10
-        ur5_2_ee_tip_link = 10
-        while True:
-            time.sleep(0.1)
-            ee1_state = p.getLinkState(self.ur5_2, ur5_2_ee_tip_link, computeForwardKinematics=True)
-            current_state = p.getLinkState(self.ur5_camera, 12, computeForwardKinematics=True)
+        # ur5_2_ee_tip_link = 10
+        # while True:
+        #     time.sleep(0.1)
+        #     ee2_state = p.getLinkState(self.ur5_2, ur5_2_ee_tip_link, computeForwardKinematics=True)
+        #     current_state = p.getLinkState(self.ur5_camera, 12, computeForwardKinematics=True)
             
         
-            track_position = list(ee1_state[0])
-            track_position[1] += 0.6
-            track_position[2] = max(0.1, track_position[2])
+        #     track_position = list(ee2_state[0])
+        #     track_position[1] += 0.6
+        #     track_position[2] = max(0.1, track_position[2])
             
-            track_position = np.array(track_position)
+        #     track_position = np.array(track_position)
             
-            current_position = np.array(current_state[0])
+        #     current_position = np.array(current_state[0])
             
-            diff = current_position-track_position
-            diff_ = (np.sum(np.abs(diff)))
-            if diff_>0.01:
-                track_qut = np.array(p.getQuaternionFromEuler((0, 0, -0.5*math.pi)))
-                track_pose = np.hstack((track_position, track_qut))
+        #     diff = current_position-track_position
+        #     diff_ = (np.sum(np.abs(diff)))
+        #     if diff_>0.01:
+        #         track_qut = np.array(p.getQuaternionFromEuler((0, 0, -0.5*math.pi)))
+        #         track_pose = np.hstack((track_position, track_qut))
             
-                success = self.movep(arm1_pose=None, arm2_pose=None, arm_camera_pose=track_pose)
+        #         success = self.movep(arm1_pose=None, arm2_pose=None, arm_camera_pose=track_pose)
+        pass
                 
     def camera_follow_new_thread(self):
         self.follow_thread = threading.Thread(target=self.camera_follow, name="camera_follow")
         self.follow_thread.start()
         
-    def set_camPose(self, d=1.0, yaw=20, pitch=-35, target=(0.5, 0, 0.1)):
+    def set_camPose(self, d=1, yaw=20, pitch=-40, target=(0.5, 0., 0.)):
         p.resetDebugVisualizerCamera(
             cameraDistance=d,
             cameraYaw=yaw,
             cameraPitch=pitch,
             cameraTargetPosition=target)  # 调整相机位置  TODO 好像不能调整焦距
         
-        
-
     def reset(self, task, last_info=None, disable_render_load=True):
         '''初始化双机械臂环境
         '''
@@ -126,6 +162,7 @@ class DualArmEnvironment(Environment):
         # p.setGravity(0, 0, -9.8)
 
         self.set_camPose()
+        
 
         # Slightly increase default movej timeout for the more demanding tasks.
         if self.is_bag_env():
@@ -196,14 +233,12 @@ class DualArmEnvironment(Environment):
             p.resetJointState(self.ur5_2, self.joints_2[i], self.homej[i])
             p.resetJointState(self.ur5_camera, self.joints_camera[i], self.homej[i])
         
-        # time.sleep(100)
-
         # Get end effector tip pose in home configuration.
         ee_tip_state = p.getLinkState(self.ur5, self.ee_tip_link)
-        # print(ee_tip_state)
+        print(ee_tip_state)
         self.home_pose = np.array(ee_tip_state[0] + ee_tip_state[1])
         ee_tip_state_2 = p.getLinkState(self.ur5_2, self.ee_tip_link_2)
-        # print(ee_tip_state_2)
+        print(ee_tip_state_2)
         self.home_pose_2 = np.array(ee_tip_state_2[0] + ee_tip_state_2[1])
         # time.sleep(100)
 
@@ -319,7 +354,7 @@ class DualArmEnvironment(Environment):
 
                 arm1_norm = np.linalg.norm(arm1_diffj)
                 arm1_v = arm1_diffj / arm1_norm if arm1_norm > 0 else 0
-                arm1_stepj = arm1_currj + arm1_v * speed + (np.random.random(arm1_v.shape) - 0.5) * 0.001  # add some noise
+                arm1_stepj = arm1_currj + arm1_v * speed + (np.random.random(arm1_v.shape) - 0.5) * 0.00001  # add some noise
                 arm1_gains = np.ones(len(self.ur5_list[2]))
                 p.setJointMotorControlArray(
                     bodyIndex=self.ur5_list[0],
@@ -340,7 +375,7 @@ class DualArmEnvironment(Environment):
                 
                 arm2_norm = np.linalg.norm(arm2_diffj)
                 arm2_v = arm2_diffj / arm2_norm if arm2_norm > 0 else 0
-                arm2_stepj = arm2_currj + arm2_v * speed + (np.random.random(arm2_v.shape) - 0.5) * 0.001  # add some noise
+                arm2_stepj = arm2_currj + arm2_v * speed + (np.random.random(arm2_v.shape) - 0.5) * 0.00001  # add some noise
                 arm2_gains = np.ones(len(self.ur5_list[2]))
                 p.setJointMotorControlArray(
                     bodyIndex=self.ur5_2_list[0],
@@ -361,7 +396,7 @@ class DualArmEnvironment(Environment):
                 
                 arm_camera_norm = np.linalg.norm(arm_camera_diffj)
                 arm_camera_v = arm_camera_diffj / arm_camera_norm if arm_camera_norm > 0 else 0
-                arm_camera_stepj = arm_camera_currj + arm_camera_v * speed + (np.random.random(arm_camera_v.shape) - 0.5) * 0.001  # add some noise
+                arm_camera_stepj = arm_camera_currj + arm_camera_v * speed + (np.random.random(arm_camera_v.shape) - 0.5) * 0.0001  # add some noise
                 arm_camera_gains = np.ones(len(self.ur5_2_list[2]))
                 p.setJointMotorControlArray(
                     bodyIndex=self.ur5_camera_list[0],
@@ -423,12 +458,12 @@ class DualArmEnvironment(Environment):
             self.step() will terminate the episode after this action.
         """
         time.sleep(5)
-        self.set_camPose(d=0.5, yaw=0, pitch=-20)
+        self.set_camPose(d=0.7)
         print("arm1_pose0, arm1_pose1, arm2_pose0, arm2_pose1:", arm1_pose0, arm1_pose1, arm2_pose0, arm2_pose1)
         # Defaults used in the standard Ravens environments.
         speed = 0.01
-        delta_z = -0.005
-        prepick_z = 0.3
+        delta_z = -0.001
+        prepick_z = 0.2
         postpick_z = 0.3
         preplace_z = 0.3
         pause_place = 0.0
@@ -450,6 +485,8 @@ class DualArmEnvironment(Environment):
         if hasattr(self.task, 'def_IDs'):
             def_IDs = self.task.def_IDs
 
+        # utils.cprint(def_IDs, "red")
+
         # Otherwise, proceed as normal.
         success = True
         arm1_pick_position = np.array(arm1_pose0[0])
@@ -469,36 +506,59 @@ class DualArmEnvironment(Environment):
         success &= self.movep(arm1_prepick_pose, arm2_prepick_pose, arm_camera_pose=None)
         utils.cprint("Arrive prepick_pose", "yellow")
         
+        # time.sleep(200)
+
         arm1_target_pose = arm1_prepick_pose.copy()
         arm2_target_pose = arm2_prepick_pose.copy()
         delta = np.array([0, 0, delta_z, 0, 0, 0, 0])
         
         while True:
             if arm1_target_pose is not None:
-                if not self.ee.detect_contact(def_IDs) and arm1_target_pose[2] > 0:  # what goes wrong here?
+                if not self.ee.detect_contact() and arm1_target_pose[2] > 0:  # what goes wrong here?
                     arm1_target_pose += delta
                 else:
                     arm1_target_pose = None
 
             if arm2_target_pose is not None:
-                if not self.ee_2.detect_contact(def_IDs) and arm2_target_pose[2] > 0:
+                if not self.ee_2.detect_contact() and arm2_target_pose[2] > 0:
                     arm2_target_pose += delta
                 else:
                     arm2_target_pose = None
 
             if arm1_target_pose is None and arm2_target_pose is None:  # 存在可能：运动到0但是没有触碰到物体
+                # raise up a little
+                # ee1_state = p.getLinkState(self.ur5, self.ee_tip_link)
+                # arm1_target_pose = np.hstack((ee1_state[0], ee1_state[1])) - 4*delta
+                # ee2_state = p.getLinkState(self.ur5_2, self.ee_tip_link_2)
+                # arm2_target_pose = np.hstack((ee2_state[0], ee2_state[1])) - 4*delta
+                # print(arm1_target_pose, arm2_target_pose)
+                # self.movep(arm1_target_pose, arm2_target_pose, arm_camera_pose=None, speed=0.003)
+                # utils.cprint("Raise up a little", "yellow")
                 break
             else:   
                 success &= self.movep(arm1_target_pose, arm2_target_pose, arm_camera_pose=None, speed=0.003)
+        # if arm1_target_pose[2] > 0.05:
+        #     arm1_target_pose += delta
+        #     arm2_target_pose += delta
+        #     self.movep(arm1_target_pose, arm2_target_pose, arm_camera_pose=None, speed=0.003)
+        # else:
+        #     break
+
+        # utils.cprint("Arrive pick_pose", "yellow")
+
+        # time.sleep(200)
 
         # Create constraint (rigid objects) or anchor (deformable).
-        self.ee.activate(self.objects, def_IDs)
-        self.ee_2.activate(self.objects, def_IDs)
+        
+        self.ee.activate(self.objects)
+        self.ee_2.activate(self.objects)
         utils.cprint("Activate grasp", "yellow")
+        time.sleep(0.01)
+        # time.sleep(200)
 
         # Increase z slightly (or hard-code it) and check picking success.
-        arm1_prepick_pose[2] = 0.1
-        arm2_prepick_pose[2] = 0.1
+        arm1_prepick_pose[2] = 0.2
+        arm2_prepick_pose[2] = 0.2
         arm1_prepick_pose[3:] = [0, 0, 0, 1]  # 摆正角度
         arm2_prepick_pose[3:] = [0, 0, 0, 1]
         success &= self.movep(arm1_prepick_pose, arm2_prepick_pose, arm_camera_pose=None, speed=0.003)
@@ -507,20 +567,75 @@ class DualArmEnvironment(Environment):
         # self.set_camPose(d=0.3)s
         pick_success = self.ee.check_grasp() and self.ee_2.check_grasp()
 
+        utils.cprint(pick_success, "yellow")
+        
         if pick_success:
             arm1_place_position = np.array(arm1_pose1[0])
-            arm1_place_rotation = np.array(arm1_pose1[1])
+            arm1_place_position[2] = 0.3
+            # arm1_place_rotation = np.array(arm1_pose1[1])
+            arm1_place_rotation = (0.0, 0.0, 0.7071067811865475, 0.7071067811865476)
+            utils.cprint(arm1_pick_rotation, "yellow")
             
             arm2_place_position = np.array(arm2_pose1[0])
-            arm2_place_rotation = np.array(arm2_pose1[1])
+            arm2_place_position[2] = 0.3
+            # arm2_place_rotation = np.array(arm2_pose1[1])
+            arm2_place_rotation = (0.0, 0.0, 0.7071067811865475, 0.7071067811865476)
             
             arm1_place_pose = np.hstack((arm1_place_position, arm1_place_rotation))
             arm2_place_pose = np.hstack((arm2_place_position, arm2_place_rotation))
             
-            success &= self.movep(arm1_place_pose, arm2_place_pose, arm_camera_pose=None, speed=0.001)
+            success &= self.movep(arm1_place_pose, arm2_place_pose, arm_camera_pose=None, speed=0.004)
+            time.sleep(0.1)
             utils.cprint("Arrive place_pose", "yellow")
-
-            time.sleep(2)
+            self.pause()
+            time.sleep(5)
 
         else:
             utils.cprint("Grasp failed!", "red")
+            self.pause()
+    
+    def get_pixel_pos_from_world_pos(self, world_pos, view_matrix, projection_matrix, width, height):
+        '''
+        从世界坐标转换到像素位置
+        
+        Args:
+            world_pos: 世界坐标
+            view_matrix: 视图矩阵
+            projection_matrix: 投影矩阵
+            width: 图像宽度
+            height: 图像高度
+        ''' 
+        # 将世界坐标系中的点转换为相机坐标系中的点
+        point_camera = np.dot(view_matrix, world_pos)
+        # 将相机坐标系中的点转换为裁剪坐标系中的点
+        point_clip = np.dot(projection_matrix, point_camera)
+        # 将裁剪坐标系中的点转换为归一化设备坐标系中的点
+        point_ndc = point_clip / point_clip[3]
+        # 将归一化设备坐标系中的点转换为像素坐标系中的点
+        x_pixel = (point_ndc[0] + 1) * width / 2
+        y_pixel = (1 - point_ndc[1]) * height / 2
+        return (int(x_pixel), int(y_pixel))
+    def get_world_pos_from_pixel_pos(self, pixel_pos, view_matrix, projection_matrix, width, height, Z_c):
+        '''
+        从像素位置转换到世界坐标
+        
+        Args:
+            pixel_pos: 像素坐标
+            view_matrix: 视图矩阵
+            projection_matrix: 投影矩阵
+            width: 图像宽度
+            height: 图像高度
+            Z_c: 目标点在相机坐标系的纵坐标
+        ''' 
+        # 将像素坐标系中的点转换为归一化设备坐标系中的点
+        x_ndc = 2 * pixel_pos[0] / width - 1
+        y_ndc = 1 - 2 * pixel_pos[1] / height
+        z_ndc = -projection_matrix[2][2] - projection_matrix[2][3] / Z_c
+        point_ndc = np.array([x_ndc, y_ndc, z_ndc, 1])
+        # 将归一化设备坐标系中的点转换为裁剪坐标系中的点
+        point_clip = point_ndc * (-Z_c)
+        # 将裁剪坐标系中的点转换为相机坐标系中的点
+        point_camera = np.dot(np.linalg.inv(projection_matrix), point_clip)
+        # 将相机坐标系中的点转换为世界坐标系中的点
+        point_world = np.dot(np.linalg.inv(view_matrix), point_camera)
+        return point_world
