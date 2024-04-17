@@ -676,3 +676,201 @@ def mask_visualization(mask):
     img = np.expand_dims(mask, -1).repeat(3, axis=-1)
     scale = int(255 / np.max(img)) if np.max(img) != 0 else 1
     return  img * scale
+
+#######################
+# sensing model utils #
+#######################
+def process_image(image):
+    '''
+    Process an input BGR image to identify and highlight green objects.
+
+    This function performs several image processing steps to isolate green objects:
+    1. Converts the BGR image to HSV color space.
+    2. Applies a color mask to isolate green regions.
+    3. Binarizes the mask.
+    4. Performs morphological opening to remove noise.
+    5. Finds and processes contours to determine the bounding rectangles.
+
+    For each detected green object, the function:
+    - Computes the minimal enclosing rectangle.
+    - Calculates the center coordinates of these rectangles.
+    - Determines the endpoints of the width (longest side) of these rectangles.
+    - Draws the bounding rectangles and width lines onto the original image.
+
+    Args:
+        image (numpy.ndarray): An input image in BGR format of shape (height, width, 3).
+
+    Returns:
+        tuple: A tuple containing:
+            - image (numpy.ndarray): The original image with detected areas highlighted.
+            - center_coords (list of list of int): List of [x, y] coordinates for the centers of detected rectangles.
+            - end_points_pairs (list of tuples): List of tuples where each tuple contains two points (each as a tuple of (x, y)),
+              representing the endpoints of the longest side of the bounding rectangle of each detected green object.
+    '''
+    # HSV处理，过滤绿色色相
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    lower_green = np.array([40, 40, 40])
+    upper_green = np.array([70, 255, 255])
+    mask = cv2.inRange(hsv, lower_green, upper_green)
+    # cv2.imshow("mask", mask)
+
+    # 二值化
+    _, binary = cv2.threshold(mask, 0, 255, cv2.THRESH_BINARY)
+    # cv2.imshow("binary", binary)
+
+    # 形态学操作
+    kernel = np.ones((5, 5), np.uint8)
+    opening = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    # cv2.imshow("opening", opening)
+
+    # 寻找轮廓并画出框框
+    contours, _ = cv2.findContours(opening, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    center_coords = []
+    end_points_pairs = []
+    for cnt in contours:
+        # Get the min area rect
+        rect = cv2.minAreaRect(cnt)
+        center = [int(rect[0][0]), int(rect[0][1])]
+        center_coords.append(center)
+        size = rect[1] # (width, height)
+        angle = rect[2] # [-90, 0)
+        # print("center: ", center)
+
+        # get corner points of the rectangle
+        box = cv2.boxPoints(rect)
+        box = np.int0(box)
+        # print(box)
+        end_points_of_width = get_width_end_points(box)
+        end_points_pairs.append(end_points_of_width)
+        
+        # Draw the rectangle
+        cv2.drawContours(image, [box], 0, (255, 0, 0), 2)
+        cv2.circle(image, (center[0], center[1]), 2, (0, 0, 255), -1)
+        cv2.line(image, tuple(end_points_of_width[0]), tuple(end_points_of_width[1]), (255, 255, 0), 3)
+    # cv2.circle(image, (242, 388), 2, (255, 0, 0), -1)
+    # cv2.circle(image, (400, 439), 2, (255, 0, 0), -1)
+    return image, center_coords, end_points_pairs
+def get_width_end_points(box):
+    '''
+    Args:
+        box: 4个顶点坐标, shape=(4, 2)
+    '''
+    def distance(pt1, pt2):
+        return np.sqrt((pt2[0] - pt1[0]) ** 2 + (pt2[1] - pt1[1]) ** 2)
+
+    distances = [distance(box[i], box[(i + 1) % 4]) for i in range(4)]
+    # Find the longest side
+    max_index = np.argmax(distances)
+    longest_side_points = (box[max_index], box[(max_index + 1) % 4])
+    return longest_side_points
+def get_pixel_pos_from_world_pos(world_pos, view_matrix, projection_matrix, width, height):
+    '''
+    从世界坐标转换到像素位置
+    
+    Args:
+        world_pos: 世界坐标
+        view_matrix: 视图矩阵
+        projection_matrix: 投影矩阵
+        width: 图像宽度
+        height: 图像高度
+    ''' 
+    # 将世界坐标系中的点转换为相机坐标系中的点
+    point_camera = np.dot(view_matrix, world_pos)
+    # print("Z_c: ", point_camera[3])
+    # 将相机坐标系中的点转换为裁剪坐标系cv2.cvtColor(中的点
+    point_clip = np.dot(projection_matrix, point_camera)
+    # 将裁剪坐标系中的点转换为归一化设备坐标系中的点
+    point_ndc = point_clip / point_clip[3]
+    # 将归一化设备坐标系中的点转换为像素坐标系中的点
+    x_pixel = (point_ndc[0] + 1) * width / 2
+    y_pixel = (1 - point_ndc[1]) * height / 2
+    return (int(x_pixel), int(y_pixel))
+def get_world_pos_from_pixel_pos(pixel_pos, view_matrix, projection_matrix, width, height, Z_c):
+    '''
+    Convert a pixel position to world coordinates.
+
+    This function converts a pixel position on the screen into the corresponding 
+    point in world space coordinates, using the given view and projection matrices,
+    along with the dimensions of the viewport and a specific depth in camera coordinates.
+
+    Args:
+        pixel_pos (tuple): The pixel coordinates as a tuple (x, y) where x and y are integers.
+        view_matrix (numpy.ndarray): The view matrix representing the camera's orientation and position in the world.
+        projection_matrix (numpy.ndarray): The projection matrix used to project the 3D scene onto the 2D viewport.
+        width (int): The width of the viewport in pixels.
+        height (int): The height of the viewport in pixels.
+        Z_c (float): The z value of the point in the camera coordinates. It defines how far along the camera's 
+                     viewing direction the point is located.
+
+    Returns:
+        numpy.ndarray: The position in world coordinates as a 4D vector (x, y, z).
+
+    Steps:
+        1. Convert pixel coordinates to normalized device coordinates (NDC).
+        2. Convert NDC to clip coordinates.
+        3. Transform clip coordinates to camera coordinates.
+        4. Convert camera coordinates to world coordinates.
+    ''' 
+    # 将像素坐标系中的点转换为归一化设备坐标系中的点
+    x_ndc = 2 * pixel_pos[0] / width - 1
+    y_ndc = 1 - 2 * pixel_pos[1] / height
+    z_ndc = -projection_matrix[2][2] - projection_matrix[2][3] / Z_c
+    point_ndc = np.array([x_ndc, y_ndc, z_ndc, 1.])
+    # 将归一化设备坐标系中的点转换为裁剪坐标系中的点
+    point_clip = point_ndc * (-Z_c)
+    # 将裁剪坐标系中的点转换为相机坐标系中的点
+    point_camera = np.dot(np.linalg.inv(projection_matrix), point_clip)
+    # 将相机坐标系中的点转换为世界坐标系中的点
+    point_world = np.dot(np.linalg.inv(view_matrix), point_camera)
+    return point_world[:3]
+def calculate_rotation_quaternion_from_vectors(ref, target):
+    """
+    Calculate the rotation quaternion that aligns the reference vector 'ref' to the target vector 'target'.
+    
+    Args:
+    ref (list or array): Reference vector.
+    target (list or array): Target vector to which the reference vector should be aligned.
+    
+    Returns:
+    numpy.array: Quaternion [x, y, z, w] representing the rotation.
+    """
+    # Convert input vectors to numpy arrays for easier mathematical operations
+    ref = np.array(ref)
+    target = np.array(target)
+    
+    # Normalize the vectors
+    ref = ref / np.linalg.norm(ref)
+    target = target / np.linalg.norm(target)
+    
+    # Calculate the cross product to find the rotation axis
+    axis = np.cross(ref, target)
+    axis_norm = np.linalg.norm(axis)  # Magnitude of the axis vector
+    
+    # Check for zero axis norm which indicates parallel vectors
+    if axis_norm == 0:
+        if np.allclose(ref, target):
+            # Vectors are parallel and in the same direction
+            return np.array([1.0, 0.0, 0.0, 0.0])  # No rotation needed, return the identity quaternion
+        else:
+            # Vectors are parallel and opposite; rotate 180 degrees around an orthogonal axis
+            # Choosing an orthogonal vector by checking which major axis is less aligned with the ref vector
+            orthogonal = np.array([1, 0, 0]) if abs(ref[0]) < abs(ref[1]) else np.array([0, 1, 0])
+            axis = np.cross(ref, orthogonal)
+            axis = axis / np.linalg.norm(axis)
+            return np.array([0.0, axis[0], axis[1], axis[2]])  # Quaternion for 180 degree rotation
+
+    # Normalize the rotation axis to unit length
+    axis = axis / axis_norm
+    
+    # Calculate the cosine of the angle using the dot product
+    cos_theta = np.dot(ref, target)
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)  # Clip to avoid numerical issues outside the range [-1, 1]
+    theta = np.arccos(cos_theta)  # Angle in radians
+    
+    # Calculate quaternion components using the half-angle trigonometric identities
+    w = np.cos(theta / 2)
+    x = axis[0] * np.sin(theta / 2)
+    y = axis[1] * np.sin(theta / 2)
+    z = axis[2] * np.sin(theta / 2)
+    
+    return np.array([x, y, z, w])

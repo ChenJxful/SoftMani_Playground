@@ -672,88 +672,28 @@ class Task():
                 params = {'pose0': pick_pose, 'pose1': place_pose}
                 print("params:", params)
                 act['params'] = params
-            
+
             elif self.primitive == 'pick_place_vessel':
                 # !! policy for vessel_sim !!
                 # Trigger reset if no ground truth steps are available.
                 if len(self.goal['steps']) == 0:  # default False
                     self.goal['steps'] = []  # trigger done then reset
                     return act
-
-                # Get possible picking locations (prioritize furthest).
-                # next_step = self.goal['steps'][0]
-                # possible_objects = np.int32(list(next_step.keys())).copy()  # default empty
-                # print("possible_objects", possible_objects)
                 
-                # 获取所有物体（珠子）的位置
-                object_positions = {}
-                for object_id in env.objects:  # record all objects
-                    # print("object_id", object_id)
-                    position_ = p.getBasePositionAndOrientation(object_id)
-                    # print(position_)
-                    object_positions[object_id] = position_
+
+                while not env.find_target:
+                    time.sleep(0.1)
+                
+                targets_pose_now = []
+                for target in env.target_points:
+                    position = target[:3]
+                    quaternion = target[3:]
+                    euler_xyz = p.getEulerFromQuaternion(quaternion)
                     
-                # distances = []
-                # for object_id in possible_objects:  # default skip
-                #     position = p.getBasePositionAndOrientation(object_id)[0]
-                #     targets = next_step[object_id][1]
-                #     targets = [t for t in targets if t in self.goal['places']]
-                #     places = [self.goal['places'][t][0] for t in targets]
-                #     d = np.float32(places) - np.float32(position).reshape(1, 3)
-                #     distances.append(np.min(np.linalg.norm(d, axis=1)))
-
-                # distances_sort = np.argsort(distances)[::-1]
-                # possible_objects = possible_objects[distances_sort]  # default empty
-
-                # for object_id in possible_objects:
-                #     cv2.imwrite('debug/object_mask.jpg', utils.mask_visualization(object_mask))  # for DEBUG
-                #     pick_mask = np.uint8(object_mask == object_id)
-                #     cv2.imwrite('debug/before.jpg', utils.mask_visualization(pick_mask))  # for DEBUG
-                #     pick_mask = cv2.erode(pick_mask, np.ones((3, 3), np.uint8))
-                #     cv2.imwrite('debug/after.jpg', utils.mask_visualization(pick_mask))  # for DEBUG
-                #     if np.sum(pick_mask) > 0:
-                #         break
-
-                # Trigger task reset if no object is visible.
-                # if np.sum(pick_mask) == 0:
-                #     self.goal['steps'] = []  # trigger done then reset
-                #     return act
-
-                # Compute picking pose.
-                # pick_prob = np.float32(pick_mask)
-                # pick_pixel = utils.sample_distribution(pick_prob)
-                # pick_position = utils.pixel_to_position(
-                #     pick_pixel, heightmap, self.bounds, self.pixel_size)
-                pick_rotation = p.getQuaternionFromEuler((0, 0, 0))  # 默认方向（竖直向下） 
-                # pick_pose = (pick_position, pick_rotation)
-                # print("Pick pose:", pick_pose)
-
-                # position_shape = position.shape
-                # position = np.float32(position).reshape(3, -1)
-                # rotation = np.float32(p.getMatrixFromQuaternion(pose[1])).reshape(3, 3)
-                # translation = np.float32(pose[0]).reshape(3, 1)
-                # position = rotation @ position + translation
+                    targets_pose_now.append([position, utils.get_pybullet_quaternion_from_rot([0, 0, euler_xyz[2] + np.pi/2])])
 
                 targets = list(self.goal['places'].keys())
-                # print("targets", targets)
-                targets_pose_now = []
-                for t in targets:
-                    # 只比较欧拉角其中一维 这样是错误的
-                    euler_xyz = list(utils.get_rot_from_pybullet_quaternion(object_positions[t][1]))
-                    euler_xyz1 = p.getEulerFromQuaternion(object_positions[t][1])
-                    print("euler_xyz", euler_xyz)
-                    print("euler_xyz1", euler_xyz1)
-                    # return
-                    # euler_xyz[0] = 0.0
-                    # euler_xyz[1] = 0.0 # -= np.pi / 2.0
-                    # euler_xyz[2]
                 
-                    # 计算圆柱指向的夹角 TODO not fully verified !!!
-                    # dir_vector = ([1, 0, 0], [0, 0, 0, 1])
-                    # dir_vector = utils.multiply(([0, 0, 0], object_positions[t][1]), dir_vector)[0]
-                    # angle = math.atan(dir_vector[0]/dir_vector[1])
-                    targets_pose_now.append([object_positions[t][0],
-                                             utils.get_pybullet_quaternion_from_rot([0, 0, euler_xyz[0] + np.pi/2])])
 
                 arm1_pick_pose=(targets_pose_now[0])
                 arm2_pick_pose=(targets_pose_now[1])

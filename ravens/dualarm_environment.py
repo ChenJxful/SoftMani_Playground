@@ -10,7 +10,7 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
-
+import cv2
 from ravens.gripper import Gripper, Suction, Robotiq2F85
 from ravens import tasks, utils
 from ravens import Environment
@@ -21,7 +21,9 @@ class DualArmEnvironment(Environment):
     def __init__(self, disp=False, hz=240):
         super().__init__(disp, hz)  # 基础的 bullet 环境
         self.primitives["pick_place_vessel"] = self.pick_place_vessel
-        
+        self.find_target = False
+        self.target_points = [] # each element is a list [x, y, z, qx, qy, qz, qw]
+
     def camera_shoot(self):
         """
         use bullet camera
@@ -64,20 +66,55 @@ class DualArmEnvironment(Environment):
             target_points = [(0.3668141565499163, 0.04517060214212546, 0.009987704273242958, 1), 
                              (0.6370605588606723, -0.04177962641155508, 0.009987126249605554, 1)]
             
-            print("=======================")
-            pixel_points = []
-            # 通过 target point 在世界坐标系中的位置计算抓取点在像素坐标系中的位置
-            for target_point in target_points:
-                pixel_point = self.get_pixel_pos_from_world_pos(target_point, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height)
-                pixel_points.append(pixel_point)
-                print("pixel_point:", pixel_point)
+            # 读取摄像头数据
+            img = p.getCameraImage(width, height, view_mtx, proj_mtx)[2]
 
-            print("-----------------------")
+            # 最开始要寻找目标点
+            target_pixel_points = [] # used for test
+            if not self.find_target:
+                utils.cprint("Finding target points...", "green")
+                width, height = img.shape[1], img.shape[0]
+                img = img[:, :, :3] # bgr img
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                processed_image, center_coords, end_points_pairs = utils.process_image(img)
+
+                # calculate the target pos in world frame
+                Z_c = -current_position[2] + 0.01
+                for i, center in enumerate(center_coords):
+                    world_point_pos = utils.get_world_pos_from_pixel_pos(center, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height, Z_c)
+                    end_pair = end_points_pairs[i]
+                    p1 = utils.get_world_pos_from_pixel_pos(end_pair[0], np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height, Z_c)
+                    p2 = utils.get_world_pos_from_pixel_pos(end_pair[1], np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height, Z_c)
+                    target_vector = p2 - p1
+                    
+                    ref_vector = [1, 0, 0]
+                    quarternion = utils.calculate_rotation_quaternion_from_vectors(ref_vector, target_vector)
+                    
+                    self.target_points.append(np.concatenate((world_point_pos, quarternion)))
+
+                if self.target_points[0][0] > self.target_points[1][0]:
+                    self.target_points[0], self.target_points[1] = self.target_points[1], self.target_points[0]
+                
+                # utils.cprint("Successfully found target points.", "green")
+                # print(self.target_points)
+                self.find_target = True
+
+
+            #print("=======================")
+            #target_pixel_points = []
+            # 通过 target point 在世界坐标系中的位置计算抓取点在像素坐标系中的位置
+            #for target_point in target_points:
+            #    pixel_point = utils.get_pixel_pos_from_world_pos(target_point, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height)
+            #    target_pixel_points.append(pixel_point)
+                # print("pixel_point:", pixel_point)
+
+            # print("-----------------------")
             # 通过像素坐标系中的位置计算抓取点在世界坐标系中的位置
-            
+
+            # test
             Z_c = -current_position[2] + 0.01
-            for (i, pixel_point) in enumerate(pixel_points):
-                world_point = self.get_world_pos_from_pixel_pos(pixel_point, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height, Z_c)
+            for (i, pixel_point) in enumerate(target_pixel_points):
+                world_point = utils.get_world_pos_from_pixel_pos(pixel_point, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height, Z_c)
                 print("world_point:", world_point)
 
                 # 分别计算 x， y， z 的误差绝对值
@@ -87,11 +124,7 @@ class DualArmEnvironment(Environment):
                 # print("x_error, y_error, z_error:", x_error, y_error, z_error)
                 # 输出误差的均方标准差
                 print("MSE:", np.sqrt(np.mean(np.square([x_error, y_error, z_error]))))
-
-
-
-            img = p.getCameraImage(width, height, view_mtx, proj_mtx)[2]
-            np.save("figures/camera.npy", img)
+            # test done.
 
             if show_plot:
                 plt_im.set_array(img)
@@ -463,7 +496,7 @@ class DualArmEnvironment(Environment):
         # Defaults used in the standard Ravens environments.
         speed = 0.01
         delta_z = -0.001
-        prepick_z = 0.2
+        prepick_z = 0.22
         postpick_z = 0.3
         preplace_z = 0.3
         pause_place = 0.0
@@ -549,7 +582,6 @@ class DualArmEnvironment(Environment):
         # time.sleep(200)
 
         # Create constraint (rigid objects) or anchor (deformable).
-        
         self.ee.activate(self.objects)
         self.ee_2.activate(self.objects)
         utils.cprint("Activate grasp", "yellow")
@@ -557,35 +589,32 @@ class DualArmEnvironment(Environment):
         # time.sleep(200)
 
         # Increase z slightly (or hard-code it) and check picking success.
-        arm1_prepick_pose[2] = 0.2
-        arm2_prepick_pose[2] = 0.2
-        arm1_prepick_pose[3:] = [0, 0, 0, 1]  # 摆正角度
-        arm2_prepick_pose[3:] = [0, 0, 0, 1]
+        arm1_prepick_pose[2] = 0.25
+        arm2_prepick_pose[2] = 0.25
+        arm1_prepick_pose[3:] = arm1_pick_rotation
+        arm2_prepick_pose[3:] = arm2_pick_rotation
         success &= self.movep(arm1_prepick_pose, arm2_prepick_pose, arm_camera_pose=None, speed=0.003)
         utils.cprint("Raise up a little", "yellow")
         
         # self.set_camPose(d=0.3)s
         pick_success = self.ee.check_grasp() and self.ee_2.check_grasp()
-
-        utils.cprint(pick_success, "yellow")
         
         if pick_success:
+            utils.cprint("Successfully picked.", "yellow")
             arm1_place_position = np.array(arm1_pose1[0])
             arm1_place_position[2] = 0.3
             # arm1_place_rotation = np.array(arm1_pose1[1])
-            arm1_place_rotation = (0.0, 0.0, 0.7071067811865475, 0.7071067811865476)
-            utils.cprint(arm1_pick_rotation, "yellow")
+            arm1_place_rotation = p.getQuaternionFromEuler((0, 0, 0.5*np.pi))
             
             arm2_place_position = np.array(arm2_pose1[0])
             arm2_place_position[2] = 0.3
             # arm2_place_rotation = np.array(arm2_pose1[1])
-            arm2_place_rotation = (0.0, 0.0, 0.7071067811865475, 0.7071067811865476)
+            arm2_place_rotation = p.getQuaternionFromEuler((0, 0, -0.5*np.pi))
             
             arm1_place_pose = np.hstack((arm1_place_position, arm1_place_rotation))
             arm2_place_pose = np.hstack((arm2_place_position, arm2_place_rotation))
             
-            success &= self.movep(arm1_place_pose, arm2_place_pose, arm_camera_pose=None, speed=0.004)
-            time.sleep(0.1)
+            success &= self.movep(arm1_place_pose, arm2_place_pose, arm_camera_pose=None, speed=0.006)
             utils.cprint("Arrive place_pose", "yellow")
             self.pause()
             time.sleep(5)
@@ -594,48 +623,3 @@ class DualArmEnvironment(Environment):
             utils.cprint("Grasp failed!", "red")
             self.pause()
     
-    def get_pixel_pos_from_world_pos(self, world_pos, view_matrix, projection_matrix, width, height):
-        '''
-        从世界坐标转换到像素位置
-        
-        Args:
-            world_pos: 世界坐标
-            view_matrix: 视图矩阵
-            projection_matrix: 投影矩阵
-            width: 图像宽度
-            height: 图像高度
-        ''' 
-        # 将世界坐标系中的点转换为相机坐标系中的点
-        point_camera = np.dot(view_matrix, world_pos)
-        # 将相机坐标系中的点转换为裁剪坐标系中的点
-        point_clip = np.dot(projection_matrix, point_camera)
-        # 将裁剪坐标系中的点转换为归一化设备坐标系中的点
-        point_ndc = point_clip / point_clip[3]
-        # 将归一化设备坐标系中的点转换为像素坐标系中的点
-        x_pixel = (point_ndc[0] + 1) * width / 2
-        y_pixel = (1 - point_ndc[1]) * height / 2
-        return (int(x_pixel), int(y_pixel))
-    def get_world_pos_from_pixel_pos(self, pixel_pos, view_matrix, projection_matrix, width, height, Z_c):
-        '''
-        从像素位置转换到世界坐标
-        
-        Args:
-            pixel_pos: 像素坐标
-            view_matrix: 视图矩阵
-            projection_matrix: 投影矩阵
-            width: 图像宽度
-            height: 图像高度
-            Z_c: 目标点在相机坐标系的纵坐标
-        ''' 
-        # 将像素坐标系中的点转换为归一化设备坐标系中的点
-        x_ndc = 2 * pixel_pos[0] / width - 1
-        y_ndc = 1 - 2 * pixel_pos[1] / height
-        z_ndc = -projection_matrix[2][2] - projection_matrix[2][3] / Z_c
-        point_ndc = np.array([x_ndc, y_ndc, z_ndc, 1])
-        # 将归一化设备坐标系中的点转换为裁剪坐标系中的点
-        point_clip = point_ndc * (-Z_c)
-        # 将裁剪坐标系中的点转换为相机坐标系中的点
-        point_camera = np.dot(np.linalg.inv(projection_matrix), point_clip)
-        # 将相机坐标系中的点转换为世界坐标系中的点
-        point_world = np.dot(np.linalg.inv(view_matrix), point_camera)
-        return point_world
