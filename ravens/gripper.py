@@ -364,7 +364,7 @@ class Robotiq2F85:
         self.gripper_range = [0, 0.085]
         self.__parse_joint_info__()
         # Connect gripper base to robot tool link
-        p.createConstraint(self.robot_id, 
+        self.base2ur5_cons = p.createConstraint(self.robot_id, 
                            self.tool_link_index,
                            self.body, 
                            -1,
@@ -384,7 +384,7 @@ class Robotiq2F85:
                              frictionAnchor=True)  # contactStiffness=0.0, contactDamping=0.0
 
         self.setup_mimic_joints()
-        self.move_griper(self.gripper_range[1])
+        self.move_gripper(self.gripper_range[1])
 
         # Start thread to handle additional gripper constraints
         self.motor_joint = 6
@@ -442,7 +442,7 @@ class Robotiq2F85:
             p.changeConstraint(c, gearRatio=-multiplier, maxForce=100, erp=1)
     # Control joint positions by enforcing hard contraints on gripper behavior
     # Set one joint as the open/close motor joint (other joints should mimic)
-    def move_griper(self, open_length):
+    def move_gripper(self, open_length):
         # open_length = np.clip(open_length, *self.gripper_range)
         open_angle = 0.715 - math.asin((open_length - 0.010) / 0.1143)  # angle calculation
         # Control the mimic gripper joint(s)
@@ -463,7 +463,7 @@ class Robotiq2F85:
     # exceeds some threshold)
     def activate(self, valid_obj=None):
         # p.setJointMotorControl2(self.body, self.motor_joint, p.VELOCITY_CONTROL, targetVelocity=1, force=10)
-        self.move_griper(0.005)
+        self.move_gripper(0.01)
         if not self.external_contact():
             while self.moving():
                 time.sleep(0.001)
@@ -472,7 +472,7 @@ class Robotiq2F85:
     # Open gripper fingers
     def release(self):
         # p.setJointMotorControl2(self.body, self.motor_joint, p.VELOCITY_CONTROL, targetVelocity=-1, force=10)
-        self.move_griper(0.085)
+        self.move_gripper(0.085)
         while self.moving():
             time.sleep(0.001)
         self.activated = False
@@ -516,7 +516,7 @@ class Robotiq2F85:
 
     def moving(self):
         v = [np.linalg.norm(p.getLinkState(self.body, i, computeLinkVelocity=1)[6]) for i in [3, 8]]
-        return any(np.array(v) > 5e-3)
+        return any(np.array(v) > 7e-3)
 
     def check_proximity(self):
         ee_pos = np.array(p.getLinkState(self.robot_id, self.tool_link_index)[0])

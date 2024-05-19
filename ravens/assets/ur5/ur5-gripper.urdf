@@ -20,11 +20,11 @@
       </geometry>
       <material name="LightGrey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
       	<mesh filename="collision/base.stl"/>
       </geometry>
-    </collision> -->
+    </collision>
     <inertial>
       <mass value="4.0"/>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -48,11 +48,11 @@
       </geometry>
       <material name="DarkGrey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <mesh filename="collision/shoulder.stl"/>
       </geometry>
-    </collision> -->
+    </collision>
     <inertial>
       <mass value="3.7"/>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -76,11 +76,11 @@
       </geometry>
       <material name="LightGrey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <mesh filename="collision/upperarm.stl"/>
       </geometry>
-    </collision> -->
+    </collision>
     <inertial>
       <mass value="8.393"/>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.28"/>
@@ -104,11 +104,11 @@
       </geometry>
       <material name="DarkGrey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <mesh filename="collision/forearm.stl"/>
       </geometry>
-    </collision> -->
+    </collision>
     <inertial>
       <mass value="2.275"/>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.25"/>
@@ -132,11 +132,11 @@
       </geometry>
       <material name="LightGrey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <mesh filename="collision/wrist1.stl"/>
       </geometry>
-    </collision> -->
+    </collision>
     <inertial>
       <mass value="1.219"/>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -160,11 +160,11 @@
       </geometry>
       <material name="DarkGrey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <mesh filename="collision/wrist2.stl"/>
       </geometry>
-    </collision> -->
+    </collision>
     <inertial>
       <mass value="1.219"/>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>

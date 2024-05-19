@@ -59,7 +59,7 @@ class Environment():
 
         # Check PyBullet version (see also the cloth/bag task scripts!).
         p_version = pkg_resources.get_distribution('pybullet').version
-        tested = ['2.8.4', '3.0.4']
+        tested = ['2.8.4', '3.0.4', '3.2.6']
         assert p_version in tested, f'PyBullet version {p_version} not in {tested}'
 
         # Move the camera a little closer to the scene. Most args are not used.

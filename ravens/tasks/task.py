@@ -691,16 +691,23 @@ class Task():
                     euler_xyz = p.getEulerFromQuaternion(quaternion)
                     
                     targets_pose_now.append([position, utils.get_pybullet_quaternion_from_rot([0, 0, euler_xyz[2] + np.pi/2])])
-
-                targets = list(self.goal['places'].keys())
                 
 
                 arm1_pick_pose=(targets_pose_now[0])
                 arm2_pick_pose=(targets_pose_now[1])
                 
-                # arm1_pick_pose=(object_positions[targets[0]][0], pick_rotation)  # 无旋转
-                # arm2_pick_pose=(object_positions[targets[1]][0], pick_rotation)
-                # print("Pick pose:", arm1_pick_pose, arm2_pick_pose)
+                targets = list(self.goal['places'].keys())
+                # 获取所有object的position
+                object_positions = {}
+                for object_id in env.objects:  # record all objects
+                    # print("object_id", object_id)
+                    position_ = p.getBasePositionAndOrientation(object_id)
+                    # print(position_)
+                    object_positions[object_id] = position_
+                pick_pos1_true_value = object_positions[targets[0]][0] 
+                pick_pos2_true_value = object_positions[targets[1]][0]
+                utils.cprint('pick position 1 true value: '+ str(pick_pos1_true_value), 'blue')
+                utils.cprint('pick position 2 true value: '+ str(pick_pos2_true_value), 'blue')
 
                 # Get candidate target placing poses.
                 targets_pose_goal = [self.goal['places'][targets[i]] for i in range(2)]

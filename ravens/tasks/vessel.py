@@ -153,7 +153,7 @@ class Vessel(Task):
                     p.changeVisualShape(part_id, -1, rgbaColor=color)
                 # 末端圆柱设置成绿色
                 if part_id == 32 or part_id == 57:
-                    color = utils.COLORS['green'] + [1]
+                    color = utils.COLORS['dark_red'] + [1]
                     p.changeVisualShape(part_id, -1, rgbaColor=color)
                 env.objects.append(part_id)
                 # print("part_id:", part_id)
@@ -161,18 +161,20 @@ class Vessel(Task):
 
         utils.cprint('Adding vessel1...', 'green')
         # FIXME: 加入随机性 + np.r_[np.random.uniform(size=2), 0] * 0.2
-        last_part_1 = add_vessel(np.float32((0.1, 0.1, 0)),
+        last_part_1 = add_vessel(np.float32((0.1, 0.2, 0)),
                                  [1, 0, 0],
                                  [-0.25, 0.05, 0.1])  # add vessel 1
         utils.cprint('Adding vessel2...', 'green')
-        last_part_2 = add_vessel(np.float32((0.9, -0.1, 0)),
+        last_part_2 = add_vessel(np.float32((0.9, 0., 0)),
                                  [-1, 0, 0],
                                  [0.25, -0.05, 0.1])  # add vessel 2
 
         # end-part target positions
         # 最终夹爪对齐要移动到的位置
-        self.goal['places'][last_part_1] = ((0.45,0,0.1), (0, 0, 0, 1))
-        self.goal['places'][last_part_2] = ((0.55,0,0.1), (0, 0, 0, 1))
+        arm1_place_rotation = p.getQuaternionFromEuler((0, 0, 0.5*np.pi))
+        arm2_place_rotation = p.getQuaternionFromEuler((0, 0, 0.5*np.pi))
+        self.goal['places'][last_part_1] = ((0.45,0,0.1), arm1_place_rotation)
+        self.goal['places'][last_part_2] = ((0.55,0,0.1), arm2_place_rotation)
 
         # quant from euler (0, 0, 0.628)
         # (0.0, 0.0, 0.30886552009893214, 0.951105719935495)

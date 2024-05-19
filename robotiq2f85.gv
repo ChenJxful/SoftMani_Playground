@@ -1,0 +1,38 @@
+digraph G {
+node [shape=box];
+"base_link" [label="base_link"];
+"robotiq_2f_85_base" [label="robotiq_2f_85_base"];
+"robotiq_2f_85_left_driver" [label="robotiq_2f_85_left_driver"];
+"robotiq_2f_85_left_coupler" [label="robotiq_2f_85_left_coupler"];
+"robotiq_2f_85_left_follower" [label="robotiq_2f_85_left_follower"];
+"robotiq_2f_85_left_pad" [label="robotiq_2f_85_left_pad"];
+"robotiq_2f_85_left_spring_link" [label="robotiq_2f_85_left_spring_link"];
+"robotiq_2f_85_right_driver" [label="robotiq_2f_85_right_driver"];
+"robotiq_2f_85_right_coupler" [label="robotiq_2f_85_right_coupler"];
+"robotiq_2f_85_right_follower" [label="robotiq_2f_85_right_follower"];
+"robotiq_2f_85_right_pad" [label="robotiq_2f_85_right_pad"];
+"robotiq_2f_85_right_spring_link" [label="robotiq_2f_85_right_spring_link"];
+node [shape=ellipse, color=blue, fontcolor=blue];
+"base_link" -> "base_link_robotiq_2f_85_base_joint" [label="xyz: 0 0 0 \nrpy: 0 -0 0"]
+"base_link_robotiq_2f_85_base_joint" -> "robotiq_2f_85_base"
+"robotiq_2f_85_base" -> "robotiq_2f_85_left_driver_joint" [label="xyz: 0 -0.0306011 0.054904 \nrpy: 0 -0 3.14159"]
+"robotiq_2f_85_left_driver_joint" -> "robotiq_2f_85_left_driver"
+"robotiq_2f_85_left_driver" -> "robotiq_2f_85_left_coupler_joint" [label="xyz: 0 0.0315 -0.0041 \nrpy: 0 -0 0"]
+"robotiq_2f_85_left_coupler_joint" -> "robotiq_2f_85_left_coupler"
+"robotiq_2f_85_left_coupler" -> "robotiq_2f_85_left_follower_joint" [label="xyz: 0 0.0061 0.0471 \nrpy: 0 -0 0"]
+"robotiq_2f_85_left_follower_joint" -> "robotiq_2f_85_left_follower"
+"robotiq_2f_85_left_follower" -> "robotiq_2f_85_left_pad_joint" [label="xyz: 0 0 0 \nrpy: 0 -0 0"]
+"robotiq_2f_85_left_pad_joint" -> "robotiq_2f_85_left_pad"
+"robotiq_2f_85_base" -> "robotiq_2f_85_left_spring_link_joint" [label="xyz: 0 -0.012 0.0614 \nrpy: 0 -0 3.14159"]
+"robotiq_2f_85_left_spring_link_joint" -> "robotiq_2f_85_left_spring_link"
+"robotiq_2f_85_base" -> "robotiq_2f_85_right_driver_joint" [label="xyz: 0 0.0306011 0.054904 \nrpy: 0 -0 0"]
+"robotiq_2f_85_right_driver_joint" -> "robotiq_2f_85_right_driver"
+"robotiq_2f_85_right_driver" -> "robotiq_2f_85_right_coupler_joint" [label="xyz: 0 0.0315 -0.0041 \nrpy: 0 -0 0"]
+"robotiq_2f_85_right_coupler_joint" -> "robotiq_2f_85_right_coupler"
+"robotiq_2f_85_right_coupler" -> "robotiq_2f_85_right_follower_joint" [label="xyz: 0 0.0061 0.0471 \nrpy: 0 -0 0"]
+"robotiq_2f_85_right_follower_joint" -> "robotiq_2f_85_right_follower"
+"robotiq_2f_85_right_follower" -> "robotiq_2f_85_right_pad_joint" [label="xyz: 0 0 0 \nrpy: 0 -0 0"]
+"robotiq_2f_85_right_pad_joint" -> "robotiq_2f_85_right_pad"
+"robotiq_2f_85_base" -> "robotiq_2f_85_right_spring_link_joint" [label="xyz: 0 0.012 0.0614 \nrpy: 0 -0 0"]
+"robotiq_2f_85_right_spring_link_joint" -> "robotiq_2f_85_right_spring_link"
+}

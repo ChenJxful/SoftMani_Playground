@@ -438,7 +438,7 @@ def perturb(input_image, pixels, set_theta_zero=False):
 
 # Plot colors (Tableau palette).
 COLORS = {'blue':   [078.0 / 255.0, 121.0 / 255.0, 167.0 / 255.0],
-          'red':    [255.0 / 255.0, 087.0 / 255.0, 089.0 / 255.0],
+          'red':    [230.0 / 255.0, 007.0 / 255.0, 009.0 / 255.0],
           'green':  [089.0 / 255.0, 169.0 / 255.0, 079.0 / 255.0],
           'orange': [242.0 / 255.0, 142.0 / 255.0, 043.0 / 255.0],
           'yellow': [237.0 / 255.0, 201.0 / 255.0, 072.0 / 255.0],
@@ -446,7 +446,8 @@ COLORS = {'blue':   [078.0 / 255.0, 121.0 / 255.0, 167.0 / 255.0],
           'pink':   [255.0 / 255.0, 157.0 / 255.0, 167.0 / 255.0],
           'cyan':   [118.0 / 255.0, 183.0 / 255.0, 178.0 / 255.0],
           'brown':  [156.0 / 255.0, 117.0 / 255.0, 095.0 / 255.0],
-          'gray':   [186.0 / 255.0, 176.0 / 255.0, 172.0 / 255.0]}
+          'gray':   [186.0 / 255.0, 176.0 / 255.0, 172.0 / 255.0],
+          'dark_red': [184.0 / 255.0, 18.0 / 255.0, 18.0 / 255.0]}
 
 
 def plot(fname, title, ylabel, xlabel, data, xlim=[-np.inf, 0], xticks=None, ylim=[np.inf, -np.inf], show_std=True):
@@ -677,9 +678,9 @@ def mask_visualization(mask):
     scale = int(255 / np.max(img)) if np.max(img) != 0 else 1
     return  img * scale
 
-#######################
-# sensing model utils #
-#######################
+###########################
+# perception module utils #
+###########################
 def process_image(image):
     '''
     Process an input BGR image to identify and highlight green objects.
@@ -707,11 +708,25 @@ def process_image(image):
             - end_points_pairs (list of tuples): List of tuples where each tuple contains two points (each as a tuple of (x, y)),
               representing the endpoints of the longest side of the bounding rectangle of each detected green object.
     '''
-    # HSV处理，过滤绿色色相
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    lower_green = np.array([40, 40, 40])
-    upper_green = np.array([70, 255, 255])
-    mask = cv2.inRange(hsv, lower_green, upper_green)
+    # HSV处理，过滤色相
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    # 定义红色的两个HSV范围
+    # OpenCV中红色通常需要两个部分：一个低范围和一个高范围
+    lower_red1 = np.array([0, 50, 50])   # 较低的H值
+    upper_red1 = np.array([10, 247, 255])
+    lower_red2 = np.array([170, 50, 50])  # 较高的H值
+    upper_red2 = np.array([180, 255, 255])
+
+    # 创建两个红色区间的掩码
+    mask1 = cv2.inRange(hsv_image, lower_red1, upper_red1)
+    mask2 = cv2.inRange(hsv_image, lower_red2, upper_red2)
+
+    # 合并掩码
+    mask = cv2.bitwise_or(mask1, mask2)
+    # hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    # lower_green = np.array([40, 40, 40])
+    # upper_green = np.array([70, 255, 255])
+    # mask = cv2.inRange(hsv, lower_green, upper_green)
     # cv2.imshow("mask", mask)
 
     # 二值化
@@ -823,9 +838,11 @@ def get_world_pos_from_pixel_pos(pixel_pos, view_matrix, projection_matrix, widt
     # 将相机坐标系中的点转换为世界坐标系中的点
     point_world = np.dot(np.linalg.inv(view_matrix), point_camera)
     return point_world[:3]
+
 def calculate_rotation_quaternion_from_vectors(ref, target):
     """
     Calculate the rotation quaternion that aligns the reference vector 'ref' to the target vector 'target'.
+    The rotation is such that the angle between 'ref' and 'target' is minimized and does not exceed 90 degrees.
     
     Args:
     ref (list or array): Reference vector.
@@ -834,7 +851,6 @@ def calculate_rotation_quaternion_from_vectors(ref, target):
     Returns:
     numpy.array: Quaternion [x, y, z, w] representing the rotation.
     """
-    # Convert input vectors to numpy arrays for easier mathematical operations
     ref = np.array(ref)
     target = np.array(target)
     
@@ -844,33 +860,30 @@ def calculate_rotation_quaternion_from_vectors(ref, target):
     
     # Calculate the cross product to find the rotation axis
     axis = np.cross(ref, target)
-    axis_norm = np.linalg.norm(axis)  # Magnitude of the axis vector
+    axis_norm = np.linalg.norm(axis)
     
-    # Check for zero axis norm which indicates parallel vectors
     if axis_norm == 0:
-        if np.allclose(ref, target):
-            # Vectors are parallel and in the same direction
-            return np.array([1.0, 0.0, 0.0, 0.0])  # No rotation needed, return the identity quaternion
-        else:
-            # Vectors are parallel and opposite; rotate 180 degrees around an orthogonal axis
-            # Choosing an orthogonal vector by checking which major axis is less aligned with the ref vector
-            orthogonal = np.array([1, 0, 0]) if abs(ref[0]) < abs(ref[1]) else np.array([0, 1, 0])
-            axis = np.cross(ref, orthogonal)
-            axis = axis / np.linalg.norm(axis)
-            return np.array([0.0, axis[0], axis[1], axis[2]])  # Quaternion for 180 degree rotation
+        # Vectors are parallel, no rotation needed 
+        return np.array([0.0, 0.0, 0.0, 1.0])  # Identity quaternion
 
-    # Normalize the rotation axis to unit length
+    # Normalize the rotation axis
     axis = axis / axis_norm
     
     # Calculate the cosine of the angle using the dot product
     cos_theta = np.dot(ref, target)
-    cos_theta = np.clip(cos_theta, -1.0, 1.0)  # Clip to avoid numerical issues outside the range [-1, 1]
-    theta = np.arccos(cos_theta)  # Angle in radians
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)  # Ensure within valid range
+    theta = np.arccos(cos_theta)
     
-    # Calculate quaternion components using the half-angle trigonometric identities
+    # Adjust angle to not exceed 90 degrees
+    if theta > np.pi / 2:
+        theta = np.pi - theta  # Reflect the angle over the 90 degrees boundary
+        axis = -axis           # Reverse the rotation direction
+    
+    # Calculate quaternion using half-angle trigonometric identities
     w = np.cos(theta / 2)
-    x = axis[0] * np.sin(theta / 2)
-    y = axis[1] * np.sin(theta / 2)
-    z = axis[2] * np.sin(theta / 2)
+    sin_half_theta = np.sin(theta / 2)
+    x = axis[0] * sin_half_theta
+    y = axis[1] * sin_half_theta
+    z = axis[2] * sin_half_theta
     
     return np.array([x, y, z, w])

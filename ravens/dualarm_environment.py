@@ -16,6 +16,15 @@ from ravens import tasks, utils
 from ravens import Environment
 import copy
 
+from pybullet_planning import load_pybullet, connect, wait_for_user, LockRenderer, has_gui, WorldSaver, HideOutput, \
+    reset_simulation, disconnect, set_camera_pose, has_gui, set_camera, wait_for_duration, wait_if_gui, apply_alpha
+from pybullet_planning import Pose, Point, Euler
+from pybullet_planning import multiply, invert, get_distance
+from pybullet_planning import create_obj, create_attachment, Attachment, get_grasp_pose
+from pybullet_planning import link_from_name, get_link_pose, get_moving_links, get_link_name, get_disabled_collisions, \
+    get_body_body_disabled_collisions, has_link, are_links_adjacent
+from pybullet_planning import get_num_joints, get_joint_names, get_movable_joints, get_joint_positions, set_joint_positions, joint_from_name, \
+    joints_from_names, get_sample_fn, plan_joint_motion, check_initial_end
 
 class DualArmEnvironment(Environment):
     def __init__(self, disp=False, hz=240):
@@ -60,23 +69,40 @@ class DualArmEnvironment(Environment):
             )
             # print("view_mtx:", view_mtx)
             
-            proj_mtx=p.computeProjectionMatrixFOV(fov=80, aspect=width / height, nearVal=0.01, farVal=100)
+            proj_mtx=p.computeProjectionMatrixFOV(fov=69.4, aspect=width / height, nearVal=0.2, farVal=90)
             # print("proj_mtx:", proj_mtx)
 
-            target_points = [(0.3668141565499163, 0.04517060214212546, 0.009987704273242958, 1), 
-                             (0.6370605588606723, -0.04177962641155508, 0.009987126249605554, 1)]
             
             # 读取摄像头数据
             img = p.getCameraImage(width, height, view_mtx, proj_mtx)[2]
+            # 存储图像为 vessel.npy
+            # np.save("figures/graduation_design/vessel.npy", img)
+
+            ############
+            # show img #
+            ### START ##
+            # width, height = img.shape[1], img.shape[0]
+            # img = img[:, :, :3] # rgb img
+            # plt_im.set_array(img)
+            # plt.gca().set_aspect(height/width)
+            # plt.draw()
+            # plt.savefig("figures/camera.png", bbox_inches='tight', pad_inches=0)
+            # time.sleep(100)
+            # plt.pause(100)
+            #### END ####
 
             # 最开始要寻找目标点
             target_pixel_points = [] # used for test
             if not self.find_target:
                 utils.cprint("Finding target points...", "green")
                 width, height = img.shape[1], img.shape[0]
-                img = img[:, :, :3] # bgr img
-                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                img = img[:, :, :3] # rgb img
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR) # convert to bgr
                 processed_image, center_coords, end_points_pairs = utils.process_image(img)
+
+                if len(center_coords) != 2:
+                    utils.cprint("Failed to find target points.", "red")
+                    continue
 
                 # calculate the target pos in world frame
                 Z_c = -current_position[2] + 0.01
@@ -89,10 +115,11 @@ class DualArmEnvironment(Environment):
                     
                     ref_vector = [1, 0, 0]
                     quarternion = utils.calculate_rotation_quaternion_from_vectors(ref_vector, target_vector)
-                    
+                    # print("euler:", p.getEulerFromQuaternion(quarternion))
                     self.target_points.append(np.concatenate((world_point_pos, quarternion)))
 
                 if self.target_points[0][0] > self.target_points[1][0]:
+                    # leave the left point(smaller x value) in the first place
                     self.target_points[0], self.target_points[1] = self.target_points[1], self.target_points[0]
                 
                 # utils.cprint("Successfully found target points.", "green")
@@ -100,15 +127,17 @@ class DualArmEnvironment(Environment):
                 self.find_target = True
 
 
-            #print("=======================")
-            #target_pixel_points = []
+            print("=======================")
+            target_points_true = [(0.36076446339821966, 0.14370882364984666, 0.009989261182071722, 1), 
+                             (0.6375725413462177, 0.05771920072101908, 0.009988209741870424, 1)]
+            target_pixel_points = []
             # 通过 target point 在世界坐标系中的位置计算抓取点在像素坐标系中的位置
-            #for target_point in target_points:
-            #    pixel_point = utils.get_pixel_pos_from_world_pos(target_point, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height)
-            #    target_pixel_points.append(pixel_point)
-                # print("pixel_point:", pixel_point)
+            for target_point in target_points_true:
+                pixel_point = utils.get_pixel_pos_from_world_pos(target_point, np.array(view_mtx).reshape((4,4), order='F'), np.array(proj_mtx).reshape((4,4), order='F'), width, height)
+                target_pixel_points.append(pixel_point)
+                print("pixel_point:", pixel_point)
 
-            # print("-----------------------")
+            print("-----------------------")
             # 通过像素坐标系中的位置计算抓取点在世界坐标系中的位置
 
             # test
@@ -118,9 +147,9 @@ class DualArmEnvironment(Environment):
                 print("world_point:", world_point)
 
                 # 分别计算 x， y， z 的误差绝对值
-                x_error = abs(world_point[0] - target_points[i][0])
-                y_error = abs(world_point[1] - target_points[i][1])
-                z_error = abs(world_point[2] - target_points[i][2])
+                x_error = abs(world_point[0] - target_points_true[i][0])
+                y_error = abs(world_point[1] - target_points_true[i][1])
+                z_error = abs(world_point[2] - target_points_true[i][2])
                 # print("x_error, y_error, z_error:", x_error, y_error, z_error)
                 # 输出误差的均方标准差
                 print("MSE:", np.sqrt(np.mean(np.square([x_error, y_error, z_error]))))
@@ -177,7 +206,38 @@ class DualArmEnvironment(Environment):
             cameraYaw=yaw,
             cameraPitch=pitch,
             cameraTargetPosition=target)  # 调整相机位置  TODO 好像不能调整焦距
-        
+    
+    def add_obstacles(self):
+        """
+        Asks the user whether to add obstacles to the simulation environment.
+        If the user inputs 'y', it proceeds to add obstacles.
+        If the user inputs 'n', it exits the function.
+        If the input is neither, it repeats the question.
+        """
+        while True:
+            user_input = input("Do you want to add obstacles? (y or n): ")
+            if user_input.lower() == 'y':
+                obstacle_positions = [[0.1, 0, 0.2], [0.7, -0.2, 0.2], [0.7, -0.1, 0.45], [0.7, -0.2, 0.45], [0.7, 0, 0.45], [0.5, -0.1, 0.35], [0.5, -0.1, 0.45]]
+                print("Adding obstacles...")
+                obstacles = []
+                for obstacle_position in obstacle_positions:
+                    cube_id = p.loadURDF('ravens/assets/cubes/cube_small.urdf', basePosition=obstacle_position)
+                    # 创建一个固定关节，将立方体固定在空中
+                    constraintId = p.createConstraint(parentBodyUniqueId=cube_id,
+                                                    parentLinkIndex=-1,
+                                                    childBodyUniqueId=-1,
+                                                    childLinkIndex=-1,
+                                                    jointType=p.JOINT_FIXED,
+                                                    jointAxis=(0, 0, 0),
+                                                    parentFramePosition=(0, 0, 0),
+                                                    childFramePosition=obstacle_position)
+                    obstacles.append(cube_id)
+                return obstacles 
+            elif user_input.lower() == 'n':
+                None
+            else:
+                print("Invalid input, please enter 'y' for yes or 'n' for no.")
+
     def reset(self, task, last_info=None, disable_render_load=True):
         '''初始化双机械臂环境
         '''
@@ -207,8 +267,8 @@ class DualArmEnvironment(Environment):
         if disable_render_load:
             p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
 
-        id_plane = p.loadURDF('assets/plane/plane.urdf', [0, 0, -0.001])
-        id_ws = p.loadURDF('assets/ur5/workspace.urdf', [0.5, 0, 0])
+        self.id_plane = p.loadURDF('assets/plane/plane.urdf', [0, 0, -0.0001]) # inorder to show workspace correctly
+        self.id_ws = p.loadURDF('assets/ur5/workspace.urdf', [0.5, 0, 0])
 
         # Load UR5 robot arm equipped with task-specific end effector.
         self.ur5 = p.loadURDF(f'assets/ur5/ur5-{self.task.ee}.urdf', basePosition=(-0.1,0,0))
@@ -268,10 +328,10 @@ class DualArmEnvironment(Environment):
         
         # Get end effector tip pose in home configuration.
         ee_tip_state = p.getLinkState(self.ur5, self.ee_tip_link)
-        print(ee_tip_state)
+        # print(ee_tip_state)
         self.home_pose = np.array(ee_tip_state[0] + ee_tip_state[1])
         ee_tip_state_2 = p.getLinkState(self.ur5_2, self.ee_tip_link_2)
-        print(ee_tip_state_2)
+        # print(ee_tip_state_2)
         self.home_pose_2 = np.array(ee_tip_state_2[0] + ee_tip_state_2[1])
         # time.sleep(100)
 
@@ -294,24 +354,24 @@ class DualArmEnvironment(Environment):
             task.reset(self)
 
         # Daniel: might be useful to have this debugging tracker.
-        self.IDTracker = utils.TrackIDs()
-        self.IDTracker.add(id_plane, 'Plane')
-        self.IDTracker.add(id_ws, 'Workspace')
-        self.IDTracker.add(self.ur5, 'UR5')
-        try:
-            self.IDTracker.add(self.ee.body, 'Gripper.body')
-        except:
-            pass
+        # self.IDTracker = utils.TrackIDs()
+        # self.IDTracker.add(id_plane, 'Plane')
+        # self.IDTracker.add(id_ws, 'Workspace')
+        # self.IDTracker.add(self.ur5, 'UR5')
+        # try:
+        #     self.IDTracker.add(self.ee.body, 'Gripper.body')
+        # except:
+        #     pass
 
         # Daniel: add other IDs, but not all envs use the ID tracker.
-        try:
-            task_IDs = task.get_ID_tracker()
-            for i in task_IDs:
-                self.IDTracker.add(i, task_IDs[i])
-        except AttributeError:
-            pass
+        # try:
+        #     task_IDs = task.get_ID_tracker()
+        #     for i in task_IDs:
+        #         self.IDTracker.add(i, task_IDs[i])
+        # except AttributeError:
+        #     pass
         #print(self.IDTracker)  # If doing multiple episodes, check if I reset the ID dict!
-        assert id_ws == 1, f'Workspace ID: {id_ws}'
+        assert self.id_ws == 1, f'Workspace ID: {self.id_ws}'
 
         # Daniel: tune gripper for deformables if applicable, and CHECK HZ!!
         if self.is_softbody_env():  # default False
@@ -329,6 +389,8 @@ class DualArmEnvironment(Environment):
         
         self.camera_follow_new_thread()
         self.camera_shoot_new_thread()
+
+        self.obstacles = self.add_obstacles()
         return obs
     
     def movep(self, arm1_pose, arm2_pose, arm_camera_pose, speed=0.01):
@@ -492,11 +554,11 @@ class DualArmEnvironment(Environment):
         """
         time.sleep(5)
         self.set_camPose(d=0.7)
-        print("arm1_pose0, arm1_pose1, arm2_pose0, arm2_pose1:", arm1_pose0, arm1_pose1, arm2_pose0, arm2_pose1)
+        # print("arm1_pose0, arm1_pose1, arm2_pose0, arm2_pose1:", arm1_pose0, arm1_pose1, arm2_pose0, arm2_pose1)
         # Defaults used in the standard Ravens environments.
         speed = 0.01
         delta_z = -0.001
-        prepick_z = 0.22
+        prepick_z = 0.24
         postpick_z = 0.3
         preplace_z = 0.3
         pause_place = 0.0
@@ -536,7 +598,32 @@ class DualArmEnvironment(Environment):
         arm1_prepick_pose = np.hstack((arm1_prepick_position, arm1_pick_rotation))
         arm2_prepick_pose = np.hstack((arm2_prepick_position, arm2_pick_rotation))
         
-        success &= self.movep(arm1_prepick_pose, arm2_prepick_pose, arm_camera_pose=None)
+        #TODO: 给机械臂2加入轨迹规划模块
+        success &= self.movep(arm1_prepick_pose, arm2_pose=None, arm_camera_pose=None)
+
+        attachment2 = Attachment(self.ur5_2, self.ee_tip_link_2-1, get_grasp_pose(self.ee_2.base2ur5_cons), self.ee_2.body)
+        end_conf2 = self.solve_IK(self.ur5_2_list, arm2_prepick_pose)
+
+        wait_for_user('Press enter to start planning!')
+        path = plan_joint_motion(self.ur5_2, self.ur5_2_list[2], end_conf2, obstacles=self.obstacles+[self.id_plane], attachments=[attachment2], self_collisions=False, verbose=True)
+        if path is None:
+            utils.cprint('no plan found', 'red')
+            wait_for_user()
+        else:
+            wait_for_user('a motion plan is found! Press enter to start simulating!')
+
+        # move to init pose
+        success &= self.movep(arm1_prepick_pose, arm2_pose=None, arm_camera_pose=None)
+
+        # # adjusting this number will adjust the simulation speed
+        time_step = 0.3 if len(path) < 10 else 0.03
+        print(len(path))
+        for conf in path:
+            set_joint_positions(self.ur5_2, self.ur5_2_list[2], conf)
+            attachment2.assign()
+            wait_for_duration(time_step)
+
+
         utils.cprint("Arrive prepick_pose", "yellow")
         
         # time.sleep(200)
@@ -547,7 +634,7 @@ class DualArmEnvironment(Environment):
         
         while True:
             if arm1_target_pose is not None:
-                if not self.ee.detect_contact() and arm1_target_pose[2] > 0:  # what goes wrong here?
+                if not self.ee.detect_contact() and arm1_target_pose[2] > 0.003:  # what goes wrong here?
                     arm1_target_pose += delta
                 else:
                     arm1_target_pose = None
@@ -569,7 +656,7 @@ class DualArmEnvironment(Environment):
                 # utils.cprint("Raise up a little", "yellow")
                 break
             else:   
-                success &= self.movep(arm1_target_pose, arm2_target_pose, arm_camera_pose=None, speed=0.003)
+                success &= self.movep(arm1_target_pose, arm2_target_pose, arm_camera_pose=None, speed=0.01)
         # if arm1_target_pose[2] > 0.05:
         #     arm1_target_pose += delta
         #     arm2_target_pose += delta
@@ -584,6 +671,12 @@ class DualArmEnvironment(Environment):
         # Create constraint (rigid objects) or anchor (deformable).
         self.ee.activate(self.objects)
         self.ee_2.activate(self.objects)
+
+        # wait for the gripper to close
+        for _ in range(200):
+            p.stepSimulation()
+            time.sleep(1/240)
+
         utils.cprint("Activate grasp", "yellow")
         time.sleep(0.01)
         # time.sleep(200)
@@ -603,13 +696,13 @@ class DualArmEnvironment(Environment):
             utils.cprint("Successfully picked.", "yellow")
             arm1_place_position = np.array(arm1_pose1[0])
             arm1_place_position[2] = 0.3
-            # arm1_place_rotation = np.array(arm1_pose1[1])
-            arm1_place_rotation = p.getQuaternionFromEuler((0, 0, 0.5*np.pi))
+            arm1_place_rotation = np.array(arm1_pose1[1])
+            # arm1_place_rotation = p.getQuaternionFromEuler((0, 0, 0.5*np.pi))
             
             arm2_place_position = np.array(arm2_pose1[0])
             arm2_place_position[2] = 0.3
-            # arm2_place_rotation = np.array(arm2_pose1[1])
-            arm2_place_rotation = p.getQuaternionFromEuler((0, 0, -0.5*np.pi))
+            arm2_place_rotation = np.array(arm2_pose1[1])
+            # arm2_place_rotation = p.getQuaternionFromEuler((0, 0, -0.5*np.pi))
             
             arm1_place_pose = np.hstack((arm1_place_position, arm1_place_rotation))
             arm2_place_pose = np.hstack((arm2_place_position, arm2_place_rotation))
@@ -621,5 +714,5 @@ class DualArmEnvironment(Environment):
 
         else:
             utils.cprint("Grasp failed!", "red")
-            self.pause()
+            self.stop()
     
